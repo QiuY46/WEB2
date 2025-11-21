@@ -1,0 +1,1079 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>数据挖掘：分类算法深度互动实验室 v2.0</title>
+    
+    <!-- 引入 Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- 引入 React 和 ReactDOM -->
+    <script crossorigin src="https://unpkg.com/react@18/umd/react.development.js"></script>
+    <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
+    <!-- 引入 prop-types -->
+    <script src="https://unpkg.com/prop-types@15.8.1/prop-types.js"></script>
+    <!-- 引入 Recharts -->
+    <script src="https://unpkg.com/recharts@2.12.7/umd/Recharts.js"></script>
+    <!-- 引入 Babel -->
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <!-- 引入 Lucide 图标 -->
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <!-- 引入 Framer Motion -->
+    <script src="https://unpkg.com/framer-motion@10.16.4/dist/framer-motion.js"></script>
+
+    <style>
+        body {
+            font-family: 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', sans-serif;
+            background-color: #f0f4f8;
+            color: #1e293b;
+            overflow: hidden; /* 防止双重滚动条 */
+        }
+        .glass-panel {
+            background: rgba(255, 255, 255, 0.85);
+            backdrop-filter: blur(12px);
+            border-radius: 24px;
+            border: 1px solid rgba(255, 255, 255, 0.6);
+            box-shadow: 0 10px 40px -10px rgba(0, 0, 0, 0.05);
+            transition: transform 0.3s ease, box-shadow 0.3s ease;
+        }
+        .glass-panel:hover {
+            box-shadow: 0 20px 50px -10px rgba(0, 0, 0, 0.1);
+        }
+        .canvas-container {
+            cursor: crosshair;
+            touch-action: none;
+        }
+        /* 自定义滚动条 */
+        ::-webkit-scrollbar {
+            width: 8px;
+            height: 8px;
+        }
+        ::-webkit-scrollbar-track {
+            background: transparent;
+        }
+        ::-webkit-scrollbar-thumb {
+            background: #cbd5e1;
+            border-radius: 4px;
+        }
+        ::-webkit-scrollbar-thumb:hover {
+            background: #94a3b8;
+        }
+        
+        .fade-in {
+            animation: fadeIn 0.6s ease-out forwards;
+        }
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(20px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+    </style>
+</head>
+<body>
+    <div id="root"></div>
+
+    <script type="text/babel">
+        const { useState, useEffect, useRef, useMemo } = React;
+        const { motion, AnimatePresence } = window.Motion; 
+        const Recharts = window.Recharts || {};
+        const { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ReferenceLine, AreaChart, Area, BarChart, Bar, Legend } = Recharts;
+
+        // --- 图标组件 ---
+        const Icons = {
+            Brain: (props) => <i data-lucide="brain" {...props}></i>,
+            Activity: (props) => <i data-lucide="activity" {...props}></i>,
+            Target: (props) => <i data-lucide="target" {...props}></i>,
+            GitBranch: (props) => <i data-lucide="git-branch" {...props}></i>,
+            BarChart: (props) => <i data-lucide="bar-chart-2" {...props}></i>,
+            Filter: (props) => <i data-lucide="filter" {...props}></i>,
+            Tree: (props) => <i data-lucide="network" {...props}></i>,
+            Play: (props) => <i data-lucide="play" {...props}></i>,
+            RotateCcw: (props) => <i data-lucide="rotate-ccw" {...props}></i>,
+            Split: (props) => <i data-lucide="scissors" {...props}></i>,
+            Trash: (props) => <i data-lucide="trash-2" {...props}></i>,
+            Shuffle: (props) => <i data-lucide="shuffle" {...props}></i>,
+            Mail: (props) => <i data-lucide="mail" {...props}></i>,
+            CheckCircle: (props) => <i data-lucide="check-circle-2" {...props}></i>,
+            XCircle: (props) => <i data-lucide="x-circle" {...props}></i>,
+        };
+
+        // --- 导航组件 ---
+        const Navbar = ({ activeTab, setActiveTab }) => {
+            const tabs = [
+                { id: 'intro', label: '核心概念', icon: Icons.Brain },
+                { id: 'prep', label: '数据预处理', icon: Icons.Filter },
+                { id: 'knn', label: 'KNN 演示', icon: Icons.Target },
+                { id: 'tree', label: '决策树动画', icon: Icons.Tree },
+                { id: 'methods', label: '其他算法', icon: Icons.GitBranch },
+                { id: 'eval', label: '模型评估', icon: Icons.BarChart },
+            ];
+
+            useEffect(() => {
+                lucide.createIcons();
+            }, [activeTab]);
+
+            return (
+                <nav className="fixed bottom-0 md:top-0 left-0 w-full md:w-64 md:h-screen bg-slate-900 text-white flex md:flex-col shadow-2xl z-50 transition-all duration-300">
+                    <div className="hidden md:flex p-8 items-center gap-4 border-b border-slate-800/50 bg-slate-950/30">
+                        <div className="bg-gradient-to-br from-blue-500 to-indigo-600 p-3 rounded-xl shadow-lg shadow-blue-900/20">
+                            <Icons.Activity className="w-6 h-6 text-white" />
+                        </div>
+                        <div>
+                            <span className="font-bold text-xl block tracking-tight text-white">DataMining</span>
+                            <span className="text-xs text-slate-400 block font-medium">Interactive Lab v2.0</span>
+                        </div>
+                    </div>
+                    
+                    <div className="flex-1 flex md:flex-col overflow-x-auto md:overflow-y-auto scrollbar-hide md:py-4">
+                        {tabs.map(tab => (
+                            <button
+                                key={tab.id}
+                                onClick={() => setActiveTab(tab.id)}
+                                className={`flex-1 md:flex-none p-4 md:px-8 md:py-4 flex flex-col md:flex-row items-center md:gap-4 transition-all duration-200 border-t-4 md:border-t-0 md:border-r-4 outline-none
+                                ${activeTab === tab.id 
+                                    ? 'border-blue-500 bg-slate-800/80 text-blue-400 shadow-[inset_0px_0px_20px_rgba(0,0,0,0.2)]' 
+                                    : 'border-transparent text-slate-400 hover:bg-slate-800/30 hover:text-slate-200'}`}
+                            >
+                                <tab.icon className={`w-5 h-5 ${activeTab === tab.id ? 'scale-110' : ''} transition-transform`} />
+                                <span className="text-[10px] md:text-sm font-medium mt-1 md:mt-0 whitespace-nowrap">{tab.label}</span>
+                            </button>
+                        ))}
+                    </div>
+                </nav>
+            );
+        };
+
+        // --- 模块：决策树深度演示 ---
+        const DecisionTreeAdvanced = () => {
+            const rawData = useMemo(() => [
+                {x: 20, y: 80, c: 0}, {x: 30, y: 70, c: 0}, {x: 10, y: 90, c: 0}, {x: 40, y: 60, c: 0}, {x: 25, y: 25, c: 0},
+                {x: 80, y: 20, c: 1}, {x: 90, y: 10, c: 1}, {x: 70, y: 30, c: 1}, {x: 85, y: 15, c: 1}, {x: 60, y: 40, c: 1},
+                {x: 30, y: 20, c: 0}, {x: 80, y: 80, c: 1}, {x: 55, y: 55, c: 1}, {x: 45, y: 45, c: 0} 
+            ], []);
+
+            const [step, setStep] = useState(0);
+            
+            const steps = [
+                { 
+                    title: "初始状态 (Root)", 
+                    desc: "包含所有数据点。目前混合度(熵)最高，我们需要找到一个切分点。",
+                    split: null,
+                    entropy: 0.98,
+                },
+                { 
+                    title: "第一次分裂 (Split 1)", 
+                    desc: "算法遍历所有可能的分割，发现 X = 50 能最好地将红蓝点分开。",
+                    split: { type: 'v', val: 50 },
+                    entropy: 0.65,
+                },
+                { 
+                    title: "第二次分裂 (Split 2 - 左侧)", 
+                    desc: "在 X < 50 的区域内，发现 Y = 50 可以完美区分左下角的蓝点和剩余的点。",
+                    split: { type: 'h', val: 50, range: [0, 50] },
+                    entropy: 0.32,
+                },
+                { 
+                    title: "构建完成 (Final)", 
+                    desc: "决策边界形成。每个叶子节点都尽可能纯净，模型训练完成。",
+                    split: { type: 'h', val: 50, range: [50, 100] }, 
+                    entropy: 0.1,
+                }
+            ];
+
+            // 绘制2D平面
+            const renderPlot = () => {
+                return (
+                    <div className="relative w-full h-72 bg-slate-50 border border-slate-200 rounded-lg overflow-hidden group cursor-crosshair">
+                        {/* 坐标轴 */}
+                        <div className="absolute left-0 bottom-0 w-full h-[1px] bg-slate-300 z-0"></div>
+                        <div className="absolute left-0 bottom-0 w-[1px] h-full bg-slate-300 z-0"></div>
+                        
+                        {/* 网格背景 */}
+                        <div className="absolute inset-0 z-0 opacity-30" style={{backgroundImage: 'radial-gradient(#cbd5e1 1px, transparent 1px)', backgroundSize: '20px 20px'}}></div>
+
+                        {/* 数据点 */}
+                        {rawData.map((p, i) => (
+                            <motion.div key={i} 
+                                initial={{ scale: 0 }} animate={{ scale: 1 }} transition={{ delay: i * 0.05 }}
+                                className={`absolute w-3 h-3 rounded-full border border-white shadow-sm z-20
+                                    ${p.c === 0 ? 'bg-blue-500' : 'bg-red-500'}`}
+                                style={{ left: `${p.x}%`, bottom: `${p.y}%` }}
+                            />
+                        ))}
+
+                        {/* 动态分割线 */}
+                        <AnimatePresence>
+                            {step >= 1 && (
+                                <motion.div 
+                                    initial={{ height: 0 }} animate={{ height: '100%' }} transition={{ duration: 0.5 }}
+                                    className="absolute bottom-0 w-[2px] bg-slate-800 border-r border-dashed border-slate-400 z-10"
+                                    style={{ left: '50%' }}
+                                >
+                                    <div className="absolute top-2 left-1 text-[10px] font-bold bg-slate-800 text-white px-1.5 py-0.5 rounded">X &lt; 50</div>
+                                </motion.div>
+                            )}
+                            {step >= 2 && (
+                                <motion.div 
+                                    initial={{ width: 0 }} animate={{ width: '50%' }} transition={{ duration: 0.5 }}
+                                    className="absolute w-[50%] h-[2px] bg-slate-800 z-10"
+                                    style={{ left: 0, bottom: '50%' }}
+                                >
+                                    <div className="absolute -top-6 right-2 text-[10px] font-bold bg-slate-800 text-white px-1.5 py-0.5 rounded">Y &lt; 50</div>
+                                </motion.div>
+                            )}
+                            {step >= 3 && (
+                                <>
+                                    <motion.div initial={{opacity:0}} animate={{opacity:0.1}} className="absolute left-0 bottom-0 w-[50%] h-[50%] bg-blue-600 z-0" />
+                                    <motion.div initial={{opacity:0}} animate={{opacity:0.1}} className="absolute left-0 top-0 w-[50%] h-[50%] bg-red-600 z-0" />
+                                    <motion.div initial={{opacity:0}} animate={{opacity:0.1}} className="absolute right-0 top-0 w-[50%] h-full bg-red-600 z-0" />
+                                </>
+                            )}
+                        </AnimatePresence>
+                    </div>
+                );
+            };
+
+            // 绘制树结构
+            const renderTree = () => {
+                return (
+                    <div className="flex flex-col items-center w-full h-full justify-start pt-4 relative">
+                        {/* Level 1 */}
+                        <motion.div layout className={`z-10 px-4 py-2 rounded-lg border-2 ${step===0 ? 'bg-yellow-50 border-yellow-400 ring-2 ring-yellow-200' : 'bg-white border-slate-200'}`}>
+                            <span className="font-bold text-sm">All Data</span>
+                        </motion.div>
+
+                        {/* Link 1 */}
+                        {step >= 1 && <motion.div initial={{height:0}} animate={{height:32}} className="w-[2px] bg-slate-300 -my-1"></motion.div>}
+
+                        {/* Level 2 */}
+                        {step >= 1 && (
+                            <motion.div initial={{opacity:0, scale:0.5}} animate={{opacity:1, scale:1}} className="z-10">
+                                <div className="px-4 py-2 rounded-lg bg-slate-800 text-white text-xs font-mono shadow-lg">X &lt; 50?</div>
+                            </motion.div>
+                        )}
+
+                        {/* Links 2 */}
+                        {step >= 1 && (
+                            <div className="flex w-40 justify-between -mt-2">
+                                <motion.div initial={{height:0}} animate={{height:32}} className="w-[50%] border-r-2 border-t-2 border-slate-300 rounded-tr-lg transform -translate-x-[1px]"></motion.div>
+                                <motion.div initial={{height:0}} animate={{height:32}} className="w-[50%] border-l-2 border-t-2 border-slate-300 rounded-tl-lg transform translate-x-[1px]"></motion.div>
+                            </div>
+                        )}
+
+                        {/* Level 3 */}
+                        {step >= 1 && (
+                            <div className="flex w-full justify-around -mt-1">
+                                <div className="flex flex-col items-center">
+                                    <div className="px-1 bg-green-100 text-green-800 text-[10px] rounded mb-1">Yes</div>
+                                    {step >= 2 ? (
+                                        <motion.div initial={{scale:0}} animate={{scale:1}} className="px-3 py-1 rounded bg-white border-2 border-slate-800 text-xs">Y &lt; 50?</motion.div>
+                                    ) : (
+                                        <div className="w-8 h-8 rounded-full bg-slate-200 animate-pulse"></div>
+                                    )}
+                                </div>
+                                <div className="flex flex-col items-center">
+                                    <div className="px-1 bg-red-100 text-red-800 text-[10px] rounded mb-1">No</div>
+                                    <motion.div initial={{scale:0}} animate={{scale:1}} className="px-3 py-2 rounded bg-red-50 border border-red-200 text-center shadow-sm">
+                                        <div className="font-bold text-red-600 text-xs">Red</div>
+                                    </motion.div>
+                                </div>
+                            </div>
+                        )}
+                         {/* Level 4 */}
+                         {step >= 2 && (
+                            <div className="flex w-40 justify-start relative pl-4 pt-1">
+                                <div className="absolute left-[20%] top-0 w-[2px] h-6 bg-slate-300"></div>
+                                <div className="absolute left-[10%] top-6 w-[20%] h-[2px] bg-slate-300"></div>
+                                <div className="flex gap-4 mt-6 -ml-2">
+                                    <motion.div initial={{opacity:0, y:-10}} animate={{opacity:1, y:0}} className="flex flex-col items-center">
+                                        <span className="text-[9px] bg-slate-100 px-1 mb-1 rounded">Yes</span>
+                                        <div className="px-2 py-1 rounded bg-blue-50 border border-blue-200 text-xs text-blue-600 font-bold">Blue</div>
+                                    </motion.div>
+                                    <motion.div initial={{opacity:0, y:-10}} animate={{opacity:1, y:0}} className="flex flex-col items-center">
+                                        <span className="text-[9px] bg-slate-100 px-1 mb-1 rounded">No</span>
+                                        <div className="px-2 py-1 rounded bg-red-50 border border-red-200 text-xs text-red-600 font-bold">Red</div>
+                                    </motion.div>
+                                </div>
+                            </div>
+                        )}
+                    </div>
+                );
+            };
+
+            return (
+                <div className="space-y-6 fade-in h-full flex flex-col">
+                    <div className="glass-panel p-6 border-l-4 border-green-500 flex justify-between items-center">
+                        <div>
+                            <h2 className="text-2xl font-bold text-slate-800 flex items-center gap-2">
+                                <Icons.Tree className="text-green-600 w-6 h-6"/>
+                                决策树构建过程 (递归划分)
+                            </h2>
+                            <p className="text-slate-600 mt-1 text-sm">
+                                决策树通过贪心策略，自顶向下地选择最优属性进行分裂，最大化信息增益。
+                            </p>
+                        </div>
+                        <div className="hidden md:block text-right">
+                            <div className="text-xs text-slate-400 uppercase tracking-wider">Step</div>
+                            <div className="text-3xl font-bold text-green-600">{step + 1} <span className="text-lg text-slate-300">/ {steps.length}</span></div>
+                        </div>
+                    </div>
+
+                    <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 flex-1">
+                        <div className="lg:col-span-4 space-y-4 flex flex-col">
+                            <div className="glass-panel p-6 flex-1 flex flex-col">
+                                <div className="mb-6">
+                                    <h3 className="font-bold text-slate-700 mb-2 flex items-center gap-2">
+                                        <span className="w-2 h-2 rounded-full bg-blue-500"></span>
+                                        {steps[step].title}
+                                    </h3>
+                                    <p className="text-sm text-slate-500 leading-relaxed bg-slate-50 p-3 rounded-lg border border-slate-100">
+                                        {steps[step].desc}
+                                    </p>
+                                </div>
+                                
+                                <div className="mb-8">
+                                    <div className="flex justify-between text-xs font-bold text-slate-500 mb-2">
+                                        <span>当前熵值 (Entropy)</span>
+                                        <span className="font-mono">{steps[step].entropy.toFixed(2)}</span>
+                                    </div>
+                                    <div className="w-full bg-slate-100 rounded-full h-3 overflow-hidden">
+                                        <motion.div 
+                                            initial={{ width: 0 }}
+                                            animate={{ width: `${steps[step].entropy * 100}%` }}
+                                            transition={{ duration: 0.8 }}
+                                            className={`h-full rounded-full ${steps[step].entropy > 0.5 ? 'bg-gradient-to-r from-orange-400 to-red-500' : 'bg-gradient-to-r from-green-400 to-emerald-500'}`}
+                                        ></motion.div>
+                                    </div>
+                                </div>
+
+                                <div className="flex gap-3 mt-auto">
+                                    <button 
+                                        onClick={() => setStep(Math.max(0, step - 1))}
+                                        disabled={step === 0}
+                                        className="flex-1 py-3 rounded-xl border border-slate-200 text-slate-600 font-bold text-sm hover:bg-slate-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex items-center justify-center gap-2"
+                                    >
+                                        <Icons.RotateCcw className="w-4 h-4"/> 上一步
+                                    </button>
+                                    <button 
+                                        onClick={() => setStep(Math.min(steps.length - 1, step + 1))}
+                                        disabled={step === steps.length - 1}
+                                        className="flex-1 py-3 rounded-xl bg-slate-800 text-white font-bold text-sm hover:bg-slate-900 disabled:opacity-50 disabled:cursor-not-allowed shadow-lg shadow-slate-200 transition-all flex items-center justify-center gap-2"
+                                    >
+                                        下一步 <Icons.Play className="w-4 h-4 fill-current"/>
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div className="lg:col-span-4">
+                            <div className="glass-panel p-1 h-full flex flex-col">
+                                <div className="p-4 border-b border-slate-100">
+                                    <h3 className="font-bold text-slate-700 flex items-center gap-2">
+                                        <Icons.Split className="text-purple-500 w-4 h-4"/> 
+                                        特征空间划分
+                                    </h3>
+                                </div>
+                                <div className="flex-1 bg-white p-4 flex items-center justify-center rounded-b-2xl">
+                                    {renderPlot()}
+                                </div>
+                            </div>
+                        </div>
+
+                        <div className="lg:col-span-4">
+                            <div className="glass-panel p-1 h-full flex flex-col">
+                                <div className="p-4 border-b border-slate-100">
+                                    <h3 className="font-bold text-slate-700 flex items-center gap-2">
+                                        <Icons.GitBranch className="text-blue-500 w-4 h-4"/> 
+                                        生成的树结构
+                                    </h3>
+                                </div>
+                                <div className="flex-1 bg-slate-50/50 p-4 rounded-b-2xl overflow-hidden relative">
+                                    {renderTree()}
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            );
+        };
+
+        // --- 模块：核心概念 ---
+        const IntroModule = () => {
+            return (
+                <div className="space-y-6 fade-in">
+                    <div className="glass-panel p-10 border-l-4 border-blue-500 relative overflow-hidden">
+                        <motion.div 
+                            initial={{ opacity: 0, scale: 0.8 }}
+                            animate={{ opacity: 0.1, scale: 1 }}
+                            transition={{ duration: 1 }}
+                            className="absolute -right-10 -top-10 text-blue-900"
+                        >
+                            <Icons.Activity size={200} />
+                        </motion.div>
+                        <h1 className="text-4xl font-bold text-slate-800 mb-4">分类算法 (Classification)</h1>
+                        <p className="text-xl text-slate-600 leading-relaxed max-w-3xl">
+                            分类是数据挖掘的核心任务之一。通过学习已知的<strong>训练数据</strong>，构建一个模型（分类器），用于预测新数据的<strong>类别标签</strong>。
+                        </p>
+                    </div>
+
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                        <motion.div whileHover={{ y: -5 }} className="glass-panel p-8 h-full">
+                            <div className="w-12 h-12 bg-blue-100 text-blue-600 rounded-2xl flex items-center justify-center mb-6">
+                                <Icons.Brain className="w-6 h-6" />
+                            </div>
+                            <h3 className="font-bold text-slate-800 text-xl mb-4">分类 vs 预测</h3>
+                            <div className="space-y-4">
+                                <div className="p-4 rounded-xl bg-blue-50 border border-blue-100">
+                                    <div className="font-bold text-blue-900 mb-1">分类 (Classification)</div>
+                                    <div className="text-sm text-blue-700 mb-2">输出是离散的类别标签。</div>
+                                    <div className="flex gap-2">
+                                        <span className="text-[10px] font-mono bg-white border border-blue-200 px-2 py-1 rounded text-blue-600">垃圾邮件? {`{是, 否}`}</span>
+                                        <span className="text-[10px] font-mono bg-white border border-blue-200 px-2 py-1 rounded text-blue-600">肿瘤? {`{良性, 恶性}`}</span>
+                                    </div>
+                                </div>
+                                <div className="p-4 rounded-xl bg-purple-50 border border-purple-100">
+                                    <div className="font-bold text-purple-900 mb-1">预测/回归 (Regression)</div>
+                                    <div className="text-sm text-purple-700 mb-2">输出是连续的数值。</div>
+                                    <div className="flex gap-2">
+                                        <span className="text-[10px] font-mono bg-white border border-purple-200 px-2 py-1 rounded text-purple-600">明日气温 -> 26.5°C</span>
+                                        <span className="text-[10px] font-mono bg-white border border-purple-200 px-2 py-1 rounded text-purple-600">房价 -> $1.2M</span>
+                                    </div>
+                                </div>
+                            </div>
+                        </motion.div>
+
+                        <motion.div whileHover={{ y: -5 }} className="glass-panel p-8 h-full">
+                            <h3 className="font-bold text-slate-800 text-xl mb-6">分类的两步过程</h3>
+                            <div className="relative pl-8 border-l-2 border-slate-200 space-y-8">
+                                <div className="relative">
+                                    <div className="absolute -left-[41px] top-0 bg-slate-800 text-white w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold ring-4 ring-white">1</div>
+                                    <h4 className="font-bold text-slate-800 text-lg">模型构建 (Training)</h4>
+                                    <p className="text-sm text-slate-500 mt-1">分析训练数据集，建立描述预定义类别的模型。</p>
+                                    <div className="mt-3 flex gap-2">
+                                        <span className="text-xs bg-slate-100 text-slate-500 px-2 py-1 rounded">算法: 决策树, 贝叶斯...</span>
+                                    </div>
+                                </div>
+                                <div className="relative">
+                                    <div className="absolute -left-[41px] top-0 bg-green-500 text-white w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold ring-4 ring-white">2</div>
+                                    <h4 className="font-bold text-slate-800 text-lg">模型使用 (Inference)</h4>
+                                    <p className="text-sm text-slate-500 mt-1">用于对新数据进行分类。首先需评估准确率，若可接受则投入使用。</p>
+                                    <div className="mt-3 flex gap-2">
+                                        <span className="text-xs bg-green-50 text-green-600 px-2 py-1 rounded border border-green-100">Target: 新数据标签</span>
+                                    </div>
+                                </div>
+                            </div>
+                        </motion.div>
+                    </div>
+                </div>
+            );
+        };
+
+        // --- 模块：数据预处理 ---
+        const PrepModule = () => {
+            return (
+                <div className="space-y-6 fade-in">
+                    <div className="glass-panel p-8">
+                        <h2 className="text-2xl font-bold text-slate-800 mb-2">分类前的准备工作</h2>
+                        <p className="text-slate-600 mb-8">"Garbage In, Garbage Out"。高质量的数据是模型成功的关键。</p>
+                        
+                        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                            {[
+                                { title: "数据清洗", icon: "eraser", color: "amber", desc: "填充缺失值、平滑噪音数据、移除离群点。", ex: "Age: NaN -> 25" },
+                                { title: "特征选择", icon: "search", color: "cyan", desc: "移除无关属性（如 ID）或冗余属性。", ex: "Drop: User_ID" },
+                                { title: "归一化", icon: "arrow-right-left", color: "indigo", desc: "将属性缩放到相同范围，防止大数值主导。", ex: "Salary: [0, 1]" }
+                            ].map((item, i) => (
+                                <div key={i} className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100 hover:border-blue-400 hover:shadow-md transition-all group">
+                                    <div className={`w-12 h-12 bg-${item.color}-100 text-${item.color}-600 rounded-xl flex items-center justify-center mb-4 group-hover:scale-110 transition-transform`}>
+                                        <i data-lucide={item.icon} className="w-6 h-6"></i>
+                                    </div>
+                                    <h3 className="font-bold text-lg text-slate-800 mb-2">{item.title}</h3>
+                                    <p className="text-sm text-slate-500 mb-4 min-h-[40px]">{item.desc}</p>
+                                    <div className="bg-slate-50 p-3 rounded-lg text-xs text-slate-500 font-mono border border-slate-100">
+                                        Example: <br/> {item.ex}
+                                    </div>
+                                </div>
+                            ))}
+                        </div>
+                    </div>
+                </div>
+            );
+        };
+
+        // --- 模块：KNN 演示 ---
+        const KNNDemo = () => {
+            const canvasRef = useRef(null);
+            const [points, setPoints] = useState([
+                {x: 100, y: 100, type: 'A'}, {x: 120, y: 80, type: 'A'}, {x: 150, y: 150, type: 'A'},
+                {x: 300, y: 300, type: 'B'}, {x: 280, y: 320, type: 'B'}, {x: 350, y: 250, type: 'B'},
+                {x: 200, y: 300, type: 'B'}, {x: 100, y: 250, type: 'A'}
+            ]);
+            const [kValue, setKValue] = useState(3);
+            const [mousePos, setMousePos] = useState({ x: 0, y: 0 });
+            const [prediction, setPrediction] = useState(null);
+
+            const getDist = (p1, p2) => Math.sqrt(Math.pow(p1.x - p2.x, 2) + Math.pow(p1.y - p2.y, 2));
+
+            const handleCanvasClick = (e) => {
+                const rect = canvasRef.current.getBoundingClientRect();
+                const x = e.clientX - rect.left;
+                const y = e.clientY - rect.top;
+                const type = Math.random() > 0.5 ? 'A' : 'B';
+                setPoints([...points, { x, y, type }]);
+            };
+
+            const resetPoints = () => setPoints([]);
+            const randomPoints = () => {
+                const newPoints = [];
+                for(let i=0; i<15; i++) {
+                    newPoints.push({
+                        x: Math.random() * 550 + 20,
+                        y: Math.random() * 350 + 20,
+                        type: Math.random() > 0.5 ? 'A' : 'B'
+                    })
+                }
+                setPoints(newPoints);
+            };
+
+            const handleMouseMove = (e) => {
+                const rect = canvasRef.current.getBoundingClientRect();
+                setMousePos({
+                    x: e.clientX - rect.left,
+                    y: e.clientY - rect.top
+                });
+            };
+
+            useEffect(() => {
+                const canvas = canvasRef.current;
+                const ctx = canvas.getContext('2d');
+                ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+                // Grid
+                ctx.strokeStyle = '#f1f5f9';
+                ctx.lineWidth = 1;
+                for(let i=0; i<canvas.width; i+=40) { ctx.beginPath(); ctx.moveTo(i,0); ctx.lineTo(i,canvas.height); ctx.stroke(); }
+                for(let i=0; i<canvas.height; i+=40) { ctx.beginPath(); ctx.moveTo(0,i); ctx.lineTo(canvas.width,i); ctx.stroke(); }
+
+                // Logic
+                const distances = points.map(p => ({ ...p, dist: getDist(p, mousePos) }));
+                distances.sort((a, b) => a.dist - b.dist);
+                const neighbors = distances.slice(0, kValue);
+
+                let countA = 0;
+                let countB = 0;
+                neighbors.forEach(n => n.type === 'A' ? countA++ : countB++);
+                const res = countA > countB ? 'A' : (countB > countA ? 'B' : 'Tie');
+                setPrediction(res);
+
+                // Draw Points
+                points.forEach(p => {
+                    ctx.beginPath();
+                    ctx.arc(p.x, p.y, 6, 0, 2 * Math.PI);
+                    ctx.fillStyle = p.type === 'A' ? '#3b82f6' : '#ef4444'; 
+                    ctx.fill();
+                    ctx.strokeStyle = 'white';
+                    ctx.lineWidth = 2;
+                    ctx.stroke();
+                });
+
+                // Draw Mouse & Connections
+                if (mousePos.x > 0 && mousePos.y > 0) {
+                    // Range Circle
+                    if(neighbors.length > 0) {
+                        const maxDist = neighbors[neighbors.length-1].dist;
+                        ctx.beginPath();
+                        ctx.arc(mousePos.x, mousePos.y, maxDist, 0, 2*Math.PI);
+                        ctx.fillStyle = res === 'A' ? 'rgba(59, 130, 246, 0.05)' : (res === 'B' ? 'rgba(239, 68, 68, 0.05)' : 'rgba(200,200,200,0.1)');
+                        ctx.fill();
+                        ctx.strokeStyle = res === 'A' ? 'rgba(59, 130, 246, 0.3)' : (res === 'B' ? 'rgba(239, 68, 68, 0.3)' : 'rgba(200,200,200,0.3)');
+                        ctx.setLineDash([5, 5]);
+                        ctx.lineWidth = 1;
+                        ctx.stroke();
+                        ctx.setLineDash([]);
+                    }
+
+                    // Mouse Point
+                    ctx.beginPath();
+                    ctx.arc(mousePos.x, mousePos.y, 8, 0, 2 * Math.PI);
+                    ctx.fillStyle = res === 'A' ? '#3b82f6' : (res === 'B' ? '#ef4444' : '#94a3b8');
+                    ctx.fill();
+                    ctx.strokeStyle = 'white';
+                    ctx.lineWidth = 3;
+                    ctx.stroke();
+
+                    // Lines to Neighbors
+                    neighbors.forEach(n => {
+                        ctx.beginPath();
+                        ctx.moveTo(mousePos.x, mousePos.y);
+                        ctx.lineTo(n.x, n.y);
+                        ctx.strokeStyle = n.type === 'A' ? 'rgba(59, 130, 246, 0.4)' : 'rgba(239, 68, 68, 0.4)';
+                        ctx.lineWidth = 1;
+                        ctx.stroke();
+                    });
+                }
+            }, [points, kValue, mousePos]);
+
+            return (
+                <div className="flex flex-col h-full gap-6 fade-in">
+                    <div className="glass-panel p-6">
+                        <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-4 gap-4">
+                            <div>
+                                <h2 className="text-2xl font-bold text-slate-800 flex items-center gap-2"><Icons.Target className="text-blue-500"/> K-最近邻 (KNN)</h2>
+                                <p className="text-slate-600 text-sm mt-1">
+                                    惰性学习法：不预先训练模型，预测时根据最近的 K 个邻居进行“多数表决”。
+                                </p>
+                            </div>
+                            <div className="flex items-center gap-4 bg-white p-2 rounded-xl shadow-sm border border-slate-200">
+                                <div className="px-2 text-xs font-bold text-slate-500">K = <span className="text-lg text-blue-600">{kValue}</span></div>
+                                <input 
+                                    type="range" min="1" max="15" step="2" 
+                                    value={kValue} 
+                                    onChange={(e) => setKValue(parseInt(e.target.value))}
+                                    className="accent-blue-600 w-32 cursor-pointer"
+                                />
+                            </div>
+                        </div>
+
+                        <div className="flex flex-col lg:flex-row gap-6">
+                            <div className="relative bg-white rounded-2xl shadow-inner border border-slate-200 overflow-hidden flex-1">
+                                <canvas 
+                                    ref={canvasRef} 
+                                    width={600} 
+                                    height={400}
+                                    onClick={handleCanvasClick}
+                                    onMouseMove={handleMouseMove}
+                                    className="w-full h-full object-contain cursor-crosshair"
+                                />
+                                <div className="absolute top-4 right-4 flex flex-col gap-2">
+                                    <button onClick={randomPoints} className="p-2 bg-white rounded-lg shadow text-slate-600 hover:text-blue-600 border hover:border-blue-200 transition-colors" title="随机生成"><Icons.Shuffle className="w-4 h-4"/></button>
+                                    <button onClick={resetPoints} className="p-2 bg-white rounded-lg shadow text-slate-600 hover:text-red-600 border hover:border-red-200 transition-colors" title="清空"><Icons.Trash className="w-4 h-4"/></button>
+                                </div>
+                                <div className="absolute bottom-3 left-3 text-[10px] text-slate-400 pointer-events-none bg-white/90 px-3 py-1 rounded-full shadow-sm backdrop-blur-sm">
+                                    点击空白处添加样本点
+                                </div>
+                            </div>
+
+                            <div className="w-full lg:w-72 space-y-4">
+                                <div className="bg-white p-6 rounded-2xl border border-slate-100 shadow-lg h-full flex flex-col justify-center items-center text-center relative overflow-hidden">
+                                    <div className={`absolute inset-0 opacity-5 transition-colors duration-300 ${prediction === 'A' ? 'bg-blue-500' : (prediction === 'B' ? 'bg-red-500' : 'bg-slate-200')}`}></div>
+                                    
+                                    <div className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-6">实时预测结果</div>
+                                    
+                                    <motion.div 
+                                        key={prediction}
+                                        initial={{ scale: 0.8, opacity: 0 }}
+                                        animate={{ scale: 1, opacity: 1 }}
+                                        className={`w-32 h-32 rounded-full flex items-center justify-center text-5xl font-bold text-white transition-all duration-300 shadow-xl mb-6
+                                        ${prediction === 'A' ? 'bg-gradient-to-br from-blue-400 to-blue-600 shadow-blue-200' : (prediction === 'B' ? 'bg-gradient-to-br from-red-400 to-red-600 shadow-red-200' : 'bg-slate-300')}`}>
+                                        {prediction || '?'}
+                                    </motion.div>
+                                    
+                                    <div className="text-slate-800 font-bold text-xl mb-2">
+                                        {prediction === 'A' ? '属于 类别 A (蓝)' : (prediction === 'B' ? '属于 类别 B (红)' : '等待输入...')}
+                                    </div>
+                                    <div className="text-slate-500 text-xs px-4 leading-relaxed">
+                                        算法计算了当前鼠标位置与所有点的欧氏距离，选出最近的 {kValue} 个点进行投票。
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            );
+        };
+
+        // --- 子组件：神经网络动画 ---
+        const NeuralNetworkAnim = () => {
+            return (
+                <div className="relative w-full h-64 bg-slate-900 rounded-xl overflow-hidden flex items-center justify-center shadow-inner">
+                     {/* Nodes Layer */}
+                    <div className="flex justify-between w-3/4 z-10">
+                        {/* Input Layer */}
+                        <div className="flex flex-col gap-6">
+                            {[0, 1, 2].map(i => (
+                                <div key={i} className="w-8 h-8 rounded-full bg-blue-500 border-2 border-blue-300 shadow-[0_0_15px_rgba(59,130,246,0.5)] relative group">
+                                    <span className="absolute -left-8 top-1 text-white text-xs opacity-0 group-hover:opacity-100 transition-opacity">x{i}</span>
+                                </div>
+                            ))}
+                        </div>
+                        {/* Hidden Layer */}
+                        <div className="flex flex-col gap-6">
+                            {[0, 1, 2, 3].map(i => (
+                                <div key={i} className="w-8 h-8 rounded-full bg-purple-500 border-2 border-purple-300 shadow-[0_0_15px_rgba(168,85,247,0.5)]"></div>
+                            ))}
+                        </div>
+                        {/* Output Layer */}
+                        <div className="flex flex-col justify-center">
+                            <div className="w-8 h-8 rounded-full bg-green-500 border-2 border-green-300 shadow-[0_0_15px_rgba(34,197,94,0.5)]"></div>
+                        </div>
+                    </div>
+
+                    {/* SVG Lines & Animations */}
+                    <svg className="absolute inset-0 w-full h-full pointer-events-none">
+                        <defs>
+                            <linearGradient id="grad1" x1="0%" y1="0%" x2="100%" y2="0%">
+                            <stop offset="0%" style={{stopColor:'rgb(59,130,246)', stopOpacity:0.2}} />
+                            <stop offset="100%" style={{stopColor:'rgb(168,85,247)', stopOpacity:0.2}} />
+                            </linearGradient>
+                        </defs>
+                        {/* Connections Input -> Hidden */}
+                        {[18, 35, 52].map((y1, i) => 
+                            [10, 27, 44, 61].map((y2, j) => (
+                                <g key={`l1-${i}-${j}`}>
+                                    <line x1="15%" y1={`${y1}%`} x2="50%" y2={`${y2}%`} stroke="url(#grad1)" strokeWidth="1" />
+                                    <motion.circle r="2" fill="#fff"
+                                        initial={{ offsetDistance: "0%" }}
+                                        animate={{ 
+                                            cx: ["15%", "50%"],
+                                            cy: [`${y1}%`, `${y2}%`],
+                                            opacity: [0, 1, 0]
+                                        }}
+                                        transition={{ 
+                                            duration: 1.5, 
+                                            repeat: Infinity, 
+                                            ease: "linear",
+                                            delay: Math.random() * 2 
+                                        }}
+                                    />
+                                </g>
+                            ))
+                        )}
+                        {/* Connections Hidden -> Output */}
+                        {[10, 27, 44, 61].map((y1, i) => (
+                             <g key={`l2-${i}`}>
+                                <line x1="50%" y1={`${y1}%`} x2="85%" y2="35%" stroke="rgba(168,85,247,0.2)" strokeWidth="1" />
+                                <motion.circle r="2" fill="#fff"
+                                    animate={{ 
+                                        cx: ["50%", "85%"],
+                                        cy: [`${y1}%`, "35%"],
+                                        opacity: [0, 1, 0]
+                                    }}
+                                    transition={{ 
+                                        duration: 1.5, 
+                                        repeat: Infinity, 
+                                        ease: "linear",
+                                        delay: 1.5 + Math.random() // Sync after first layer
+                                    }}
+                                />
+                            </g>
+                        ))}
+                    </svg>
+                    <div className="absolute bottom-2 text-slate-400 text-[10px]">Neural Network Simulation</div>
+                </div>
+            );
+        }
+
+        // --- 子组件：贝叶斯垃圾邮件计算器 ---
+        const BayesInteractive = () => {
+            const [pSpam, setPSpam] = useState(0.5); // P(S)
+            const [pWordGivenSpam, setPWordGivenSpam] = useState(0.8); // P(W|S)
+            const [pWordGivenHam, setPWordGivenHam] = useState(0.1); // P(W|H)
+
+            const pHam = 1 - pSpam;
+            // P(S|W) = P(W|S)P(S) / [P(W|S)P(S) + P(W|H)P(H)]
+            const numerator = pWordGivenSpam * pSpam;
+            const evidence = (pWordGivenSpam * pSpam) + (pWordGivenHam * pHam);
+            const result = numerator / evidence;
+
+            return (
+                <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm">
+                    <div className="flex items-start gap-4 mb-6">
+                        <div className="p-3 bg-yellow-100 text-yellow-600 rounded-lg"><Icons.Mail className="w-6 h-6"/></div>
+                        <div>
+                            <h4 className="font-bold text-lg text-slate-800">垃圾邮件分类器 (Naive Bayes)</h4>
+                            <p className="text-sm text-slate-500">
+                                假设我们收到一封包含单词 "Free" 的邮件。计算它是垃圾邮件的概率。
+                            </p>
+                        </div>
+                    </div>
+
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+                        <div className="space-y-5">
+                            <div>
+                                <label className="flex justify-between text-xs font-bold text-slate-600 mb-1">
+                                    <span>先验概率 P(Spam) - 垃圾邮件有多常见?</span>
+                                    <span>{(pSpam * 100).toFixed(0)}%</span>
+                                </label>
+                                <input type="range" min="0.01" max="0.99" step="0.01" value={pSpam} onChange={(e)=>setPSpam(parseFloat(e.target.value))} className="w-full accent-blue-600"/>
+                            </div>
+                            <div>
+                                <label className="flex justify-between text-xs font-bold text-red-500 mb-1">
+                                    <span>似然度 P("Free"|Spam) - 垃圾邮件中出现 "Free" 的概率</span>
+                                    <span>{(pWordGivenSpam * 100).toFixed(0)}%</span>
+                                </label>
+                                <input type="range" min="0.01" max="0.99" step="0.01" value={pWordGivenSpam} onChange={(e)=>setPWordGivenSpam(parseFloat(e.target.value))} className="w-full accent-red-500"/>
+                            </div>
+                            <div>
+                                <label className="flex justify-between text-xs font-bold text-green-600 mb-1">
+                                    <span>似然度 P("Free"|Ham) - 正常邮件中出现 "Free" 的概率</span>
+                                    <span>{(pWordGivenHam * 100).toFixed(0)}%</span>
+                                </label>
+                                <input type="range" min="0.01" max="0.99" step="0.01" value={pWordGivenHam} onChange={(e)=>setPWordGivenHam(parseFloat(e.target.value))} className="w-full accent-green-600"/>
+                            </div>
+                        </div>
+
+                        <div className="flex flex-col justify-center items-center bg-slate-50 rounded-xl border border-slate-200 p-4 relative">
+                            <div className="text-sm text-slate-500 font-mono mb-2">后验概率 P(Spam|"Free")</div>
+                            <div className={`text-4xl font-bold transition-colors duration-300 ${result > 0.5 ? 'text-red-500' : 'text-green-500'}`}>
+                                {(result * 100).toFixed(1)}%
+                            </div>
+                            <div className="mt-2">
+                                {result > 0.5 
+                                    ? <div className="flex items-center gap-1 text-red-600 text-sm font-bold bg-red-100 px-3 py-1 rounded-full"><Icons.XCircle className="w-4 h-4"/> 判定为垃圾邮件</div>
+                                    : <div className="flex items-center gap-1 text-green-600 text-sm font-bold bg-green-100 px-3 py-1 rounded-full"><Icons.CheckCircle className="w-4 h-4"/> 判定为正常邮件</div>
+                                }
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            );
+        };
+
+        // --- 模块：其他算法 ---
+        const MethodsModule = () => {
+            const [activeMethod, setActiveMethod] = useState('logistic');
+
+            const sigmoidData = [];
+            for (let i = -6; i <= 6; i += 0.5) {
+                sigmoidData.push({
+                    x: i,
+                    y: 1 / (1 + Math.exp(-i)),
+                    linear: i * 0.15 + 0.5 
+                });
+            }
+
+            return (
+                <div className="space-y-6 fade-in">
+                    <div className="flex gap-3 overflow-x-auto pb-2 scrollbar-hide">
+                        {[
+                            {id: 'logistic', name: '逻辑回归', icon: Icons.Activity},
+                            {id: 'bayes', name: '朴素贝叶斯', icon: Icons.Filter},
+                            {id: 'nn', name: '神经网络', icon: Icons.Brain}
+                        ].map(m => (
+                            <button 
+                                key={m.id}
+                                onClick={() => setActiveMethod(m.id)}
+                                className={`px-6 py-3 rounded-xl text-sm font-bold transition-all whitespace-nowrap flex items-center gap-2 outline-none
+                                    ${activeMethod === m.id 
+                                        ? 'bg-white text-blue-600 shadow-lg shadow-blue-100 border border-blue-100' 
+                                        : 'bg-white/40 text-slate-500 hover:bg-white hover:text-slate-700 border border-transparent'}`}
+                            >
+                                <m.icon className="w-4 h-4"/> {m.name}
+                            </button>
+                        ))}
+                    </div>
+
+                    <div className="glass-panel p-6 min-h-[400px]">
+                        {activeMethod === 'logistic' && (
+                            <div className="animate-fade-in">
+                                <h3 className="text-xl font-bold text-slate-800 mb-2">逻辑回归 (Logistic Regression)</h3>
+                                <p className="text-sm text-slate-600 mb-6">
+                                    虽然名字叫回归，但实际用于分类。它在线性回归的基础上加了 <strong>Sigmoid 激活函数</strong>，将输出压缩到 (0, 1) 之间作为概率。
+                                </p>
+                                <div className="h-72 w-full bg-white rounded-xl border border-slate-200 p-4">
+                                    <ResponsiveContainer width="100%" height="100%">
+                                        <LineChart data={sigmoidData} margin={{ top: 5, right: 20, bottom: 5, left: 0 }}>
+                                            <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
+                                            <XAxis dataKey="x" type="number" tick={false} />
+                                            <YAxis domain={[0, 1.2]} />
+                                            <Tooltip />
+                                            <ReferenceLine y={0.5} stroke="red" strokeDasharray="3 3" label={{ value: '阈值 0.5', fill: 'red', fontSize: 12 }} />
+                                            <Line type="monotone" dataKey="y" stroke="#3b82f6" strokeWidth={3} dot={false} name="Sigmoid (Probability)" />
+                                            <Line type="monotone" dataKey="linear" stroke="#cbd5e1" strokeWidth={2} strokeDasharray="5 5" dot={false} name="Linear Regression" />
+                                            <Legend />
+                                        </LineChart>
+                                    </ResponsiveContainer>
+                                </div>
+                            </div>
+                        )}
+
+                        {activeMethod === 'bayes' && (
+                            <div className="animate-fade-in">
+                                <h3 className="text-xl font-bold text-slate-800 mb-2">朴素贝叶斯 (Naive Bayes)</h3>
+                                <p className="text-sm text-slate-600 mb-6">
+                                    基于贝叶斯定理。假设特征之间<strong>相互独立</strong>（虽然这在现实中很少见，但该算法在文本分类等领域效果惊人）。
+                                </p>
+                                <BayesInteractive />
+                            </div>
+                        )}
+
+                        {activeMethod === 'nn' && (
+                            <div className="animate-fade-in">
+                                <h3 className="text-xl font-bold text-slate-800 mb-2">人工神经网络 (ANN)</h3>
+                                <p className="text-sm text-slate-600 mb-6">
+                                    模拟生物神经元连接。通过反向传播算法（Backpropagation）调整权重，适合处理高度非线性的复杂关系。
+                                </p>
+                                <NeuralNetworkAnim />
+                            </div>
+                        )}
+                    </div>
+                </div>
+            );
+        };
+
+        // --- 模块：模型评估 ---
+        const EvalModule = () => {
+            const [tp, setTp] = useState(50);
+            const [tn, setTn] = useState(40);
+            const [fp, setFp] = useState(10);
+            const [fn, setFn] = useState(5);
+            const [subTab, setSubTab] = useState('matrix');
+
+            const total = tp + tn + fp + fn;
+            const accuracy = ((tp + tn) / total).toFixed(3);
+            const precision = (tp / (tp + fp)).toFixed(3);
+            const recall = (tp / (tp + fn)).toFixed(3);
+            const f1 = (2 * precision * recall / (parseFloat(precision) + parseFloat(recall))).toFixed(3);
+            
+            const rocData = [
+                {fpr: 0, tpr: 0}, {fpr: 0.1, tpr: 0.5}, {fpr: 0.2, tpr: 0.7}, 
+                {fpr: 0.3, tpr: 0.85}, {fpr: 0.5, tpr: 0.9}, {fpr: 0.8, tpr: 0.95}, {fpr: 1, tpr: 1}
+            ];
+            
+            return (
+                <div className="space-y-6 fade-in">
+                    <div className="flex gap-4 border-b border-slate-200">
+                        {['matrix', 'roc', 'cv'].map(t => (
+                            <button 
+                                key={t}
+                                onClick={() => setSubTab(t)} 
+                                className={`px-4 py-2 text-sm font-bold border-b-2 transition-colors capitalize
+                                ${subTab === t ? 'text-blue-600 border-blue-600' : 'text-slate-400 border-transparent hover:text-slate-600'}`}
+                            >
+                                {t === 'matrix' ? '混淆矩阵' : (t === 'roc' ? 'ROC & AUC' : '交叉验证')}
+                            </button>
+                        ))}
+                    </div>
+
+                    {subTab === 'matrix' && (
+                        <div className="glass-panel p-6">
+                            <div className="flex flex-col lg:flex-row gap-8">
+                                <div className="flex-1 space-y-4">
+                                    <h3 className="font-bold text-slate-700 mb-4">拖动滑块调整预测结果</h3>
+                                    <div className="p-4 bg-green-50 rounded-lg border border-green-100">
+                                        <label className="flex justify-between text-xs font-bold text-green-700 mb-1"><span>TP (真正例) - 预测正确</span><span>{tp}</span></label>
+                                        <input type="range" max="100" value={tp} onChange={(e)=>setTp(parseInt(e.target.value))} className="w-full accent-green-600"/>
+                                    </div>
+                                    <div className="p-4 bg-slate-50 rounded-lg border border-slate-200">
+                                        <label className="flex justify-between text-xs font-bold text-slate-600 mb-1"><span>TN (真负例) - 预测正确</span><span>{tn}</span></label>
+                                        <input type="range" max="100" value={tn} onChange={(e)=>setTn(parseInt(e.target.value))} className="w-full accent-slate-600"/>
+                                    </div>
+                                    <div className="p-4 bg-red-50 rounded-lg border border-red-100">
+                                        <label className="flex justify-between text-xs font-bold text-red-600 mb-1"><span>FP (假正例) - 误报</span><span>{fp}</span></label>
+                                        <input type="range" max="100" value={fp} onChange={(e)=>setFp(parseInt(e.target.value))} className="w-full accent-red-500"/>
+                                    </div>
+                                    <div className="p-4 bg-orange-50 rounded-lg border border-orange-100">
+                                        <label className="flex justify-between text-xs font-bold text-orange-600 mb-1"><span>FN (假负例) - 漏报</span><span>{fn}</span></label>
+                                        <input type="range" max="100" value={fn} onChange={(e)=>setFn(parseInt(e.target.value))} className="w-full accent-orange-500"/>
+                                    </div>
+                                </div>
+                                <div className="flex-1">
+                                    <h3 className="font-bold text-slate-700 mb-4">评估指标</h3>
+                                    <div className="grid grid-cols-2 gap-4">
+                                        <div className="bg-white p-4 rounded-xl border border-slate-200 text-center shadow-sm">
+                                            <div className="text-3xl font-bold text-slate-700">{accuracy}</div>
+                                            <div className="text-xs text-slate-400 mt-1">Accuracy (准确率)</div>
+                                        </div>
+                                        <div className="bg-white p-4 rounded-xl border border-slate-200 text-center shadow-sm">
+                                            <div className="text-3xl font-bold text-slate-700">{f1}</div>
+                                            <div className="text-xs text-slate-400 mt-1">F1-Score</div>
+                                        </div>
+                                        <div className="bg-white p-4 rounded-xl border border-slate-200 text-center shadow-sm">
+                                            <div className="text-3xl font-bold text-emerald-600">{precision}</div>
+                                            <div className="text-xs text-slate-400 mt-1">Precision (查准率)</div>
+                                        </div>
+                                        <div className="bg-white p-4 rounded-xl border border-slate-200 text-center shadow-sm">
+                                            <div className="text-3xl font-bold text-violet-600">{recall}</div>
+                                            <div className="text-xs text-slate-400 mt-1">Recall (查全率)</div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    )}
+
+                    {subTab === 'roc' && (
+                        <div className="glass-panel p-6">
+                            <h2 className="text-xl font-bold text-slate-800 mb-2">ROC 曲线 & AUC</h2>
+                            <p className="text-sm text-slate-600 mb-6">AUC (Area Under Curve) 越接近 1，模型性能越好。</p>
+                            <div className="h-80 w-full bg-white p-4 rounded-xl border border-slate-200">
+                                <ResponsiveContainer width="100%" height="100%">
+                                    <AreaChart data={rocData}>
+                                        <CartesianGrid strokeDasharray="3 3" />
+                                        <XAxis dataKey="fpr" type="number" label={{ value: 'FPR (误报率)', position: 'insideBottom', offset: -5 }} />
+                                        <YAxis dataKey="tpr" type="number" label={{ value: 'TPR (召回率)', angle: -90, position: 'insideLeft' }} />
+                                        <Tooltip />
+                                        <Area type="monotone" dataKey="tpr" stroke="#8b5cf6" fill="#8b5cf6" fillOpacity={0.2} />
+                                        <Line dataKey="tpr" data={[{fpr:0, tpr:0}, {fpr:1, tpr:1}]} stroke="#cbd5e1" strokeDasharray="5 5" dot={false} />
+                                    </AreaChart>
+                                </ResponsiveContainer>
+                            </div>
+                        </div>
+                    )}
+
+                    {subTab === 'cv' && (
+                        <div className="glass-panel p-6">
+                            <h2 className="text-xl font-bold text-slate-800 mb-4">K-折交叉验证</h2>
+                            <p className="text-sm text-slate-600 mb-6">将数据切分为 K 份，轮流作为测试集，取平均结果。</p>
+                            <div className="space-y-3">
+                                {[1,2,3,4,5].map(k => (
+                                    <motion.div 
+                                        key={k} 
+                                        initial={{ x: -20, opacity: 0 }}
+                                        animate={{ x: 0, opacity: 1 }}
+                                        transition={{ delay: k * 0.1 }}
+                                        className="flex items-center gap-3"
+                                    >
+                                        <span className="text-xs font-mono text-slate-400 w-12">Fold {k}</span>
+                                        <div className="flex-1 flex h-10 rounded-lg overflow-hidden shadow-sm border border-slate-200">
+                                            {[1,2,3,4,5].map(i => (
+                                                <div key={i} className={`flex-1 flex items-center justify-center text-xs font-bold transition-all
+                                                    ${i === k ? 'bg-amber-400 text-white' : 'bg-slate-100 text-slate-400'}`}>
+                                                    {i === k ? 'Test' : 'Train'}
+                                                </div>
+                                            ))}
+                                        </div>
+                                    </motion.div>
+                                ))}
+                            </div>
+                        </div>
+                    )}
+                </div>
+            );
+        };
+
+        // --- 主应用组件 ---
+        const App = () => {
+            const [activeTab, setActiveTab] = useState('intro');
+
+            return (
+                <div className="h-screen flex flex-col md:flex-row overflow-hidden bg-[#f0f4f8]">
+                    <Navbar activeTab={activeTab} setActiveTab={setActiveTab} />
+                    
+                    <main className="flex-1 md:ml-64 p-4 md:p-8 overflow-y-auto h-full scroll-smooth relative">
+                        <div className="max-w-6xl mx-auto pb-24 md:pb-8 min-h-full">
+                            <AnimatePresence mode="wait">
+                                <motion.div
+                                    key={activeTab}
+                                    initial={{ opacity: 0, y: 20 }}
+                                    animate={{ opacity: 1, y: 0 }}
+                                    exit={{ opacity: 0, y: -20 }}
+                                    transition={{ duration: 0.3 }}
+                                >
+                                    {activeTab === 'intro' && <IntroModule />}
+                                    {activeTab === 'prep' && <PrepModule />}
+                                    {activeTab === 'knn' && <KNNDemo />}
+                                    {activeTab === 'tree' && <DecisionTreeAdvanced />}
+                                    {activeTab === 'methods' && <MethodsModule />}
+                                    {activeTab === 'eval' && <EvalModule />}
+                                </motion.div>
+                            </AnimatePresence>
+                        </div>
+                    </main>
+                </div>
+            );
+        };
+
+        const root = ReactDOM.createRoot(document.getElementById('root'));
+        root.render(<App />);
+    </script>
+</body>
+</html>
