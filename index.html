@@ -5,19 +5,59 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>数据挖掘：分类算法深度互动实验室 v2.0</title>
     
-    <!-- 引入 Tailwind CSS -->
-    <script src="https://cdn.tailwindcss.com"></script>
-    <!-- 引入 React 和 ReactDOM -->
-    <script crossorigin src="https://unpkg.com/react@18/umd/react.development.js"></script>
-    <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
-    <!-- 引入 prop-types -->
+    <!-- 启动兜底：依赖加载失败 / 脚本报错时显示原因，而不是白屏 -->
+    <script>
+        (function () {
+            var shown = false;
+            window.__showFatal = function (msg) {
+                if (shown) return;
+                shown = true;
+                var hint = document.getElementById('boot-hint');
+                if (hint) hint.remove();
+                var host = document.body || document.documentElement;
+                if (!host) return;
+                var panel = document.createElement('div');
+                panel.id = 'boot-fatal';
+                panel.style.cssText = 'position:fixed;left:16px;top:16px;z-index:99999;max-width:min(760px,92vw);background:#7f1d1d;color:#fff;padding:16px 20px;border-radius:12px;font:13px/1.7 Consolas,ui-monospace,monospace;white-space:pre-wrap;box-shadow:0 10px 30px rgba(0,0,0,.35)';
+                panel.textContent = '⚠ 页面启动失败\n\n' + msg;
+                host.appendChild(panel);
+            };
+            window.addEventListener('error', function (e) {
+                if (e.target && e.target.tagName === 'SCRIPT') {
+                    window.__showFatal('脚本加载失败：' + (e.target.src || '未知地址') +
+                        '\n请确认网络或代理可以访问 unpkg.com / cdn.tailwindcss.com');
+                    return;
+                }
+                if (e.message) {
+                    window.__showFatal(e.message + (e.lineno ? '\n位置：第 ' + e.lineno + ' 行' : ''));
+                }
+            }, true);
+            window.addEventListener('unhandledrejection', function (e) {
+                var r = e.reason;
+                window.__showFatal('未处理的异常：' + ((r && r.message) || r));
+            });
+            window.addEventListener('load', function () {
+                setTimeout(function () {
+                    if (document.getElementById('boot-hint')) {
+                        window.__showFatal('依赖库 10 秒内未加载完成，页面无法启动。\n请检查网络 / 代理是否可以访问 unpkg.com 与 cdn.tailwindcss.com。');
+                    }
+                }, 10000);
+            });
+        })();
+    </script>
+
+    <!-- 引入 Tailwind CSS（Play CDN，锁定版本） -->
+    <script src="https://cdn.tailwindcss.com/3.4.17"></script>
+    <!-- 引入 React 和 ReactDOM（去掉 crossorigin：file:// 下 CORS 模式容易导致加载失败） -->
+    <script src="https://unpkg.com/react@18.3.1/umd/react.development.js"></script>
+    <script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js"></script>
+    <!-- 引入 prop-types（Recharts 依赖） -->
     <script src="https://unpkg.com/prop-types@15.8.1/prop-types.js"></script>
     <!-- 引入 Recharts -->
     <script src="https://unpkg.com/recharts@2.12.7/umd/Recharts.js"></script>
-    <!-- 引入 Babel -->
-    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
-    <!-- 引入 Lucide 图标 -->
-    <script src="https://unpkg.com/lucide@latest"></script>
+    <!-- 引入 Babel：必须锁定 7.x。未锁版本的 @babel/standalone 现在会解析到 Babel 8，
+         Babel 8 不再接受 JSX 文本中的裸 ">" 字符，会直接抛 SyntaxError 导致整页白屏 -->
+    <script src="https://unpkg.com/@babel/standalone@7.26.4/babel.min.js"></script>
     <!-- 引入 Framer Motion -->
     <script src="https://unpkg.com/framer-motion@10.16.4/dist/framer-motion.js"></script>
 
@@ -69,31 +109,179 @@
     </style>
 </head>
 <body>
-    <div id="root"></div>
+    <div id="root">
+        <div id="boot-hint" style="position:fixed;inset:0;display:flex;align-items:center;justify-content:center;flex-direction:column;gap:14px;font:14px/1.6 'Microsoft YaHei',sans-serif;color:#64748b;background:#f0f4f8">
+            <div style="width:28px;height:28px;border:3px solid #cbd5e1;border-top-color:#3b82f6;border-radius:50%;animation:bootspin 1s linear infinite"></div>
+            <div>正在加载依赖库…（首次打开需要联网）</div>
+            <style>@keyframes bootspin { to { transform: rotate(360deg); } }</style>
+        </div>
+    </div>
 
     <script type="text/babel">
         const { useState, useEffect, useRef, useMemo } = React;
-        const { motion, AnimatePresence } = window.Motion; 
-        const Recharts = window.Recharts || {};
-        const { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ReferenceLine, AreaChart, Area, BarChart, Bar, Legend } = Recharts;
 
-        // --- 图标组件 ---
+        // --- Framer Motion：CDN 不可用时退化为普通元素，保证页面依然能打开 ---
+        const FM = window.Motion || {};
+        const makeMotion = (tag) => {
+            const Comp = ({ initial, animate, exit, transition, whileHover, whileTap, layout, layoutId, variants, ...rest }) =>
+                React.createElement(tag, rest);
+            Comp.displayName = 'motion.' + tag;
+            return Comp;
+        };
+        const motionCache = {};
+        const motion = FM.motion || new Proxy({}, {
+            get: (_, tag) => motionCache[tag] || (motionCache[tag] = makeMotion(tag))
+        });
+        const AnimatePresence = FM.AnimatePresence || (({ children }) => children);
+
+        // --- Recharts：缺失时用空组件兜底，避免整页崩溃 ---
+        const emptyChart = () => null;
+        const {
+            LineChart = emptyChart, Line = emptyChart, XAxis = emptyChart, YAxis = emptyChart,
+            CartesianGrid = emptyChart, Tooltip = emptyChart, ResponsiveContainer = emptyChart,
+            ReferenceLine = emptyChart, AreaChart = emptyChart, Area = emptyChart,
+            BarChart = emptyChart, Bar = emptyChart, Legend = emptyChart
+        } = (window.Recharts || {});
+
+        // --- 图标组件：内联 SVG（不再依赖 lucide CDN；原来用 createIcons 直接改 DOM，和 React 的虚拟 DOM 冲突）---
+        const IconBase = ({ size = 24, strokeWidth = 2, className, children, ...rest }) => (
+            <svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 24 24"
+                fill="none" stroke="currentColor" strokeWidth={strokeWidth}
+                strokeLinecap="round" strokeLinejoin="round" className={className} {...rest}>
+                {children}
+            </svg>
+        );
+
         const Icons = {
-            Brain: (props) => <i data-lucide="brain" {...props}></i>,
-            Activity: (props) => <i data-lucide="activity" {...props}></i>,
-            Target: (props) => <i data-lucide="target" {...props}></i>,
-            GitBranch: (props) => <i data-lucide="git-branch" {...props}></i>,
-            BarChart: (props) => <i data-lucide="bar-chart-2" {...props}></i>,
-            Filter: (props) => <i data-lucide="filter" {...props}></i>,
-            Tree: (props) => <i data-lucide="network" {...props}></i>,
-            Play: (props) => <i data-lucide="play" {...props}></i>,
-            RotateCcw: (props) => <i data-lucide="rotate-ccw" {...props}></i>,
-            Split: (props) => <i data-lucide="scissors" {...props}></i>,
-            Trash: (props) => <i data-lucide="trash-2" {...props}></i>,
-            Shuffle: (props) => <i data-lucide="shuffle" {...props}></i>,
-            Mail: (props) => <i data-lucide="mail" {...props}></i>,
-            CheckCircle: (props) => <i data-lucide="check-circle-2" {...props}></i>,
-            XCircle: (props) => <i data-lucide="x-circle" {...props}></i>,
+            Brain: (props) => (
+                <IconBase {...props}>
+                <path d="M12 18V5" />
+                <path d="M15 13a4.17 4.17 0 01-3-4 4.17 4.17 0 01-3 4" />
+                <path d="M17.707 6.294A3 3 0 1012 5a3 3 0 10-5.707 1.294" />
+                <path d="M17.996 5.125a4 4 0 012.526 5.77" />
+                <path d="M18 18a4 4 0 002-7.465" />
+                <path d="M19.967 17.482a4 4 0 11-7.967.517 4 4 0 11-7.967-.517" />
+                <path d="M6 18a4 4 0 01-2-7.465" />
+                <path d="M6.004 5.125a4 4 0 00-2.526 5.77" />
+                </IconBase>
+            ),
+            Activity: (props) => (
+                <IconBase {...props}>
+                <path d="M22 12h-2.48a2 2 0 0 0-1.93 1.46l-2.35 8.36a.25.25 0 0 1-.48 0L9.24 2.18a.25.25 0 0 0-.48 0l-2.35 8.36A2 2 0 0 1 4.49 12H2" />
+                </IconBase>
+            ),
+            Target: (props) => (
+                <IconBase {...props}>
+                <circle cx="12" cy="12" r="10" />
+                <circle cx="12" cy="12" r="6" />
+                <circle cx="12" cy="12" r="2" />
+                </IconBase>
+            ),
+            GitBranch: (props) => (
+                <IconBase {...props}>
+                <path d="M15 6a9 9 0 0 0-9 9V3" />
+                <circle cx="18" cy="6" r="3" />
+                <circle cx="6" cy="18" r="3" />
+                </IconBase>
+            ),
+            BarChart: (props) => (
+                <IconBase {...props}>
+                <path d="M5 21v-6" />
+                <path d="M12 21V3" />
+                <path d="M19 21V9" />
+                </IconBase>
+            ),
+            Filter: (props) => (
+                <IconBase {...props}>
+                <path d="M10 20a1 1 0 0 0 .553.895l2 1A1 1 0 0 0 14 21v-7a2 2 0 0 1 .517-1.341L21.74 4.67A1 1 0 0 0 21 3H3a1 1 0 0 0-.742 1.67l7.225 7.989A2 2 0 0 1 10 14z" />
+                </IconBase>
+            ),
+            Tree: (props) => (
+                <IconBase {...props}>
+                <rect x="16" y="16" width="6" height="6" rx="1" />
+                <rect x="2" y="16" width="6" height="6" rx="1" />
+                <rect x="9" y="2" width="6" height="6" rx="1" />
+                <path d="M5 16v-3a1 1 0 0 1 1-1h12a1 1 0 0 1 1 1v3" />
+                <path d="M12 12V8" />
+                </IconBase>
+            ),
+            Play: (props) => (
+                <IconBase {...props}>
+                <path d="M5 5a2 2 0 0 1 3.008-1.728l11.997 6.998a2 2 0 0 1 .003 3.458l-12 7A2 2 0 0 1 5 19z" />
+                </IconBase>
+            ),
+            RotateCcw: (props) => (
+                <IconBase {...props}>
+                <path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8" />
+                <path d="M3 3v5h5" />
+                </IconBase>
+            ),
+            Split: (props) => (
+                <IconBase {...props}>
+                <circle cx="6" cy="6" r="3" />
+                <path d="M8.12 8.12 12 12" />
+                <path d="M20 4 8.12 15.88" />
+                <circle cx="6" cy="18" r="3" />
+                <path d="M14.8 14.8 20 20" />
+                </IconBase>
+            ),
+            Trash: (props) => (
+                <IconBase {...props}>
+                <path d="M10 11v6" />
+                <path d="M14 11v6" />
+                <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6" />
+                <path d="M3 6h18" />
+                <path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
+                </IconBase>
+            ),
+            Shuffle: (props) => (
+                <IconBase {...props}>
+                <path d="m18 14 4 4-4 4" />
+                <path d="m18 2 4 4-4 4" />
+                <path d="M2 18h1.973a4 4 0 0 0 3.3-1.7l5.454-8.6a4 4 0 0 1 3.3-1.7H22" />
+                <path d="M2 6h1.972a4 4 0 0 1 3.6 2.2" />
+                <path d="M22 18h-6.041a4 4 0 0 1-3.3-1.8l-.359-.45" />
+                </IconBase>
+            ),
+            Mail: (props) => (
+                <IconBase {...props}>
+                <path d="m22 7-8.991 5.727a2 2 0 0 1-2.009 0L2 7" />
+                <rect x="2" y="4" width="20" height="16" rx="2" />
+                </IconBase>
+            ),
+            CheckCircle: (props) => (
+                <IconBase {...props}>
+                <circle cx="12" cy="12" r="10" />
+                <path d="m16 9-5.5 5.5L8 12" />
+                </IconBase>
+            ),
+            XCircle: (props) => (
+                <IconBase {...props}>
+                <circle cx="12" cy="12" r="10" />
+                <path d="m15 9-6 6" />
+                <path d="m9 9 6 6" />
+                </IconBase>
+            ),
+            Eraser: (props) => (
+                <IconBase {...props}>
+                <path d="M21 21H8a2 2 0 0 1-1.42-.587l-3.994-3.999a2 2 0 0 1 0-2.828l10-10a2 2 0 0 1 2.829 0l5.999 6a2 2 0 0 1 0 2.828L12.834 21" />
+                <path d="m5.082 11.09 8.828 8.828" />
+                </IconBase>
+            ),
+            Search: (props) => (
+                <IconBase {...props}>
+                <path d="m21 21-4.34-4.34" />
+                <circle cx="11" cy="11" r="8" />
+                </IconBase>
+            ),
+            ArrowRightLeft: (props) => (
+                <IconBase {...props}>
+                <path d="m16 3 4 4-4 4" />
+                <path d="M20 7H4" />
+                <path d="m8 21-4-4 4-4" />
+                <path d="M4 17h16" />
+                </IconBase>
+            ),
         };
 
         // --- 导航组件 ---
@@ -107,9 +295,6 @@
                 { id: 'eval', label: '模型评估', icon: Icons.BarChart },
             ];
 
-            useEffect(() => {
-                lucide.createIcons();
-            }, [activeTab]);
 
             return (
                 <nav className="fixed bottom-0 md:top-0 left-0 w-full md:w-64 md:h-screen bg-slate-900 text-white flex md:flex-col shadow-2xl z-50 transition-all duration-300">
@@ -434,8 +619,8 @@
                                     <div className="font-bold text-purple-900 mb-1">预测/回归 (Regression)</div>
                                     <div className="text-sm text-purple-700 mb-2">输出是连续的数值。</div>
                                     <div className="flex gap-2">
-                                        <span className="text-[10px] font-mono bg-white border border-purple-200 px-2 py-1 rounded text-purple-600">明日气温 -> 26.5°C</span>
-                                        <span className="text-[10px] font-mono bg-white border border-purple-200 px-2 py-1 rounded text-purple-600">房价 -> $1.2M</span>
+                                        <span className="text-[10px] font-mono bg-white border border-purple-200 px-2 py-1 rounded text-purple-600">明日气温 → 26.5°C</span>
+                                        <span className="text-[10px] font-mono bg-white border border-purple-200 px-2 py-1 rounded text-purple-600">房价 → $1.2M</span>
                                     </div>
                                 </div>
                             </div>
@@ -477,13 +662,13 @@
                         
                         <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                             {[
-                                { title: "数据清洗", icon: "eraser", color: "amber", desc: "填充缺失值、平滑噪音数据、移除离群点。", ex: "Age: NaN -> 25" },
-                                { title: "特征选择", icon: "search", color: "cyan", desc: "移除无关属性（如 ID）或冗余属性。", ex: "Drop: User_ID" },
-                                { title: "归一化", icon: "arrow-right-left", color: "indigo", desc: "将属性缩放到相同范围，防止大数值主导。", ex: "Salary: [0, 1]" }
+                                { title: "数据清洗", icon: Icons.Eraser, color: "amber", desc: "填充缺失值、平滑噪音数据、移除离群点。", ex: "Age: NaN -> 25" },
+                                { title: "特征选择", icon: Icons.Search, color: "cyan", desc: "移除无关属性（如 ID）或冗余属性。", ex: "Drop: User_ID" },
+                                { title: "归一化", icon: Icons.ArrowRightLeft, color: "indigo", desc: "将属性缩放到相同范围，防止大数值主导。", ex: "Salary: [0, 1]" }
                             ].map((item, i) => (
                                 <div key={i} className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100 hover:border-blue-400 hover:shadow-md transition-all group">
                                     <div className={`w-12 h-12 bg-${item.color}-100 text-${item.color}-600 rounded-xl flex items-center justify-center mb-4 group-hover:scale-110 transition-transform`}>
-                                        <i data-lucide={item.icon} className="w-6 h-6"></i>
+                                        <item.icon className="w-6 h-6" />
                                     </div>
                                     <h3 className="font-bold text-lg text-slate-800 mb-2">{item.title}</h3>
                                     <p className="text-sm text-slate-500 mb-4 min-h-[40px]">{item.desc}</p>
@@ -1040,9 +1225,49 @@
             );
         };
 
+        // --- 错误边界：单个模块出错时只提示该模块，不再整页白屏 ---
+        class ErrorBoundary extends React.Component {
+            constructor(props) {
+                super(props);
+                this.state = { error: null };
+            }
+            static getDerivedStateFromError(error) {
+                return { error };
+            }
+            componentDidCatch(error, info) {
+                console.error('模块渲染出错:', error, info);
+            }
+            render() {
+                if (this.state.error) {
+                    return (
+                        <div className="glass-panel p-6 border-l-4 border-red-500">
+                            <h3 className="font-bold text-red-600 mb-2">这个模块渲染出错了（其他标签页仍可正常使用）</h3>
+                            <pre className="text-xs text-slate-600 whitespace-pre-wrap break-words bg-slate-50 p-3 rounded-lg border border-slate-100">
+{String((this.state.error && this.state.error.stack) || this.state.error)}
+                            </pre>
+                            <button onClick={() => this.setState({ error: null })}
+                                className="mt-4 px-4 py-2 rounded-lg bg-slate-800 text-white text-sm font-bold hover:bg-slate-900">
+                                重试
+                            </button>
+                        </div>
+                    );
+                }
+                return this.props.children;
+            }
+        }
+
+
         // --- 主应用组件 ---
         const App = () => {
             const [activeTab, setActiveTab] = useState('intro');
+
+            // 挂载成功后移除加载占位 / 兜底提示
+            useEffect(() => {
+                const hint = document.getElementById('boot-hint');
+                if (hint) hint.remove();
+                const fatal = document.getElementById('boot-fatal');
+                if (fatal) fatal.remove();
+            }, []);
 
             return (
                 <div className="h-screen flex flex-col md:flex-row overflow-hidden bg-[#f0f4f8]">
@@ -1058,12 +1283,14 @@
                                     exit={{ opacity: 0, y: -20 }}
                                     transition={{ duration: 0.3 }}
                                 >
-                                    {activeTab === 'intro' && <IntroModule />}
-                                    {activeTab === 'prep' && <PrepModule />}
-                                    {activeTab === 'knn' && <KNNDemo />}
-                                    {activeTab === 'tree' && <DecisionTreeAdvanced />}
-                                    {activeTab === 'methods' && <MethodsModule />}
-                                    {activeTab === 'eval' && <EvalModule />}
+                                    <ErrorBoundary>
+                                        {activeTab === 'intro' && <IntroModule />}
+                                        {activeTab === 'prep' && <PrepModule />}
+                                        {activeTab === 'knn' && <KNNDemo />}
+                                        {activeTab === 'tree' && <DecisionTreeAdvanced />}
+                                        {activeTab === 'methods' && <MethodsModule />}
+                                        {activeTab === 'eval' && <EvalModule />}
+                                    </ErrorBoundary>
                                 </motion.div>
                             </AnimatePresence>
                         </div>
